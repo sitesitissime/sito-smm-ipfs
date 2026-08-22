@@ -1,0 +1,71 @@
+name: Pinata backup
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pinata-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare static site
+        run: |
+          cat site-part-* > site.zip
+          mkdir site
+          unzip -q site.zip -d site
+
+      - name: Upload a Pinata only when the site changed
+        env:
+          PINATA_JWT: ${{ secrets.PINATA_JWT }}
+        run: |
+          set -euo pipefail
+          test -n "${PINATA_JWT:-}" || { echo "Manca il segreto PINATA_JWT"; exit 1; }
+
+          archive_sha="$(find site/sito-smm-ipfs -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          pins="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $PINATA_JWT" \
+            "https://api.pinata.cloud/data/pinList?status=pinned&pageLimit=1000")"
+
+          if echo "$pins" | jq -e --arg sha "$archive_sha" \
+            '.rows[]? | select(.metadata.keyvalues.sync_site == "sito-smm-ipfs" and .metadata.keyvalues.archive_sha == $sha)' >/dev/null; then
+            echo "Backup già aggiornato: nessun caricamento necessario."
+            exit 0
+          fi
+
+          cd site/sito-smm-ipfs
+          metadata="$(jq -nc --arg sha "$archive_sha" '{
+            name: "Sito SMM Nomad Echo automatic backup",
+            keyvalues: {
+              sync_site: "sito-smm-ipfs",
+              archive_sha: $sha
+            }
+          }')"
+          options='{"wrapWithDirectory":true}'
+
+          args=()
+          while IFS= read -r -d "" file; do
+            relative="${file#./}"
+            args+=(-F "file=@$file;filename=$relative")
+          done < <(find . -type f -print0)
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $PINATA_JWT" \
+            "${args[@]}" \
+            -F "pinataMetadata=$metadata" \
+            -F "pinataOptions=$options" \
+            "https://api.pinata.cloud/pinning/pinFileToIPFS"
+
+          echo "Backup Pinata completato: $archive_sha"
+
+
