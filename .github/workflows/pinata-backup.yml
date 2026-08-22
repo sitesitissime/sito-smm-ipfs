@@ -21,9 +21,8 @@ jobs:
 
       - name: Prepare static site
         run: |
-          cat site-part-* > site.zip
-          mkdir site
-          unzip -q site.zip -d site
+          mkdir -p site/sito-smm-ipfs
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github ! -name site -exec cp -a {} site/sito-smm-ipfs/ \;
 
       - name: Upload a Pinata only when the site changed
         env:
