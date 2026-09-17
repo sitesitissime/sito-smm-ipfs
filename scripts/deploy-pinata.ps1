@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param([switch]$ArchiveOnly)
+param(
+  [switch]$ArchiveOnly,
+  [string]$ArchivePath
+)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $projectRoot
@@ -21,20 +24,37 @@ function Get-DpapiSecret([string]$name) {
 $jwt = if ($ArchiveOnly) { $null } else { Get-DpapiSecret 'pinata-jwt' }
 $password = Get-DpapiSecret 'backup-password'
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
-$archive = Join-Path $backupDir "nomad-echo-$timestamp.7z"
+$archive = if ($ArchivePath) {
+  (Resolve-Path -LiteralPath $ArchivePath).Path
+} else {
+  Join-Path $backupDir "nomad-echo-$timestamp.7z"
+}
 New-Item -ItemType Directory -Force -Path $backupDir, $stage | Out-Null
 
 try {
-  git bundle create (Join-Path $stage 'project.bundle') --all
-  if ($LASTEXITCODE -ne 0) { throw 'Creazione Git bundle fallita.' }
-  git bundle verify (Join-Path $stage 'project.bundle') *> $null
-  if ($LASTEXITCODE -ne 0) { throw 'Verifica Git bundle fallita.' }
-  git archive --format=zip --output (Join-Path $stage 'source.zip') HEAD
-  if ($LASTEXITCODE -ne 0) { throw 'Creazione snapshot fallita.' }
-  [IO.File]::WriteAllText((Join-Path $stage 'RECOVERY.txt'), "Nomad Echo`r`nRipristino: git clone project.bundle nomad-echo`r`nEstrazione: 7z x archivio.7z`r`n", [Text.UTF8Encoding]::new($false))
+  if (-not $ArchivePath) {
+    $snapshotZip = Join-Path $stage 'snapshot.zip'
+    $snapshotRepo = Join-Path $stage 'snapshot-repo'
+    git archive --format=zip --output $snapshotZip HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Creazione snapshot fallita.' }
+    Expand-Archive -LiteralPath $snapshotZip -DestinationPath $snapshotRepo
+    Remove-Item -LiteralPath $snapshotZip -Force
+    git -C $snapshotRepo init --initial-branch=main
+    git -C $snapshotRepo config user.name 'Nomad Echo Backup'
+    git -C $snapshotRepo config user.email 'backup@local.invalid'
+    git -C $snapshotRepo add --all
+    git -C $snapshotRepo commit -m "Snapshot cifrato $timestamp"
+    if ($LASTEXITCODE -ne 0) { throw 'Creazione commit snapshot fallita.' }
+    git -C $snapshotRepo bundle create (Join-Path $stage 'project.bundle') --all
+    if ($LASTEXITCODE -ne 0) { throw 'Creazione Git bundle fallita.' }
+    git bundle verify (Join-Path $stage 'project.bundle') *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Verifica Git bundle fallita.' }
+    Remove-Item -LiteralPath $snapshotRepo -Recurse -Force
+    [IO.File]::WriteAllText((Join-Path $stage 'RECOVERY.txt'), "Nomad Echo`r`nRipristino: git clone project.bundle nomad-echo`r`nEstrazione: 7z x archivio.7z`r`nCronologia completa disponibile su GitHub e GitLab.`r`n", [Text.UTF8Encoding]::new($false))
 
-  & $sevenZip a -t7z -m0=lzma2 -mx=7 -mhe=on "-p$password" $archive (Join-Path $stage '*') | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'Creazione archivio cifrato fallita.' }
+    & $sevenZip a -t7z -m0=lzma2 -mx=7 -mhe=on "-p$password" $archive (Join-Path $stage '*') | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Creazione archivio cifrato fallita.' }
+  }
   & $sevenZip t "-p$password" $archive | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Verifica archivio cifrato fallita.' }
 
@@ -46,6 +66,7 @@ try {
     keyvalues = [ordered]@{ sync_site = 'nomad-echo'; archive_sha = $sha; encrypted = 'aes-256' }
   } | ConvertTo-Json -Compress -Depth 4
   $client = [Net.Http.HttpClient]::new()
+  $client.Timeout = [TimeSpan]::FromMinutes(30)
   $client.DefaultRequestHeaders.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $jwt)
   $multipart = [Net.Http.MultipartFormDataContent]::new()
   $stream = [IO.File]::OpenRead($archive)
@@ -69,4 +90,3 @@ try {
   if ($client) { $client.Dispose() }
   if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 }
-
