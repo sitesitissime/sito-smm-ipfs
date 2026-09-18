@@ -76,7 +76,7 @@ try {
   $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
   if ($ArchiveOnly) { Write-Host "Archivio cifrato verificato: $archive"; return }
 
-  & (Join-Path $PSScriptRoot 'cleanup-pinata-backups.ps1') -Keep 30 -RequiredFreeBytes (Get-Item -LiteralPath $archive).Length -StorageLimitBytes 1000000000 -ProtectLatestReport:$false
+  & (Join-Path $PSScriptRoot 'cleanup-pinata-backups.ps1') -Keep 1 -RequiredFreeBytes (Get-Item -LiteralPath $archive).Length -StorageLimitBytes 1000000000 -ProtectLatestReport:$false
 
   $metadata = [ordered]@{
     name = "Nomad Echo encrypted backup $timestamp"
