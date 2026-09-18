@@ -1,7 +1,12 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
-  [ValidateRange(2, 1000)]
-  [int]$Keep = 30
+  [ValidateRange(1, 1000)]
+  [int]$Keep = 30,
+  [ValidateRange(0, [long]::MaxValue)]
+  [long]$RequiredFreeBytes = 0,
+  [ValidateRange(1, [long]::MaxValue)]
+  [long]$StorageLimitBytes = 1000000000,
+  [bool]$ProtectLatestReport = $true
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,12 +22,14 @@ finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
 
 $headers = @{ Authorization = "Bearer $jwt" }
 $pins = [System.Collections.Generic.List[object]]::new()
+$allPins = [System.Collections.Generic.List[object]]::new()
 $offset = 0
 do {
   $uri = "https://api.pinata.cloud/data/pinList?status=pinned&pageLimit=1000&includeCount=false&pageOffset=$offset"
   $result = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers
   $rows = @($result.rows)
   foreach ($row in $rows) {
+    $allPins.Add($row)
     if ($row.metadata.keyvalues.sync_site -eq 'nomad-echo') { $pins.Add($row) }
   }
   $offset += $rows.Count
@@ -30,11 +37,29 @@ do {
 
 $ordered = @($pins | Sort-Object { [datetime]$_.date_pinned } -Descending)
 $protected = @($ordered | Select-Object -First $Keep | ForEach-Object { $_.ipfs_pin_hash })
-if (Test-Path -LiteralPath $reportPath) {
+$latestCid = $null
+if ($ProtectLatestReport -and (Test-Path -LiteralPath $reportPath)) {
   $latestCid = (Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json).cid
   if ($latestCid) { $protected += $latestCid }
 }
-$obsolete = @($ordered | Where-Object { $_.ipfs_pin_hash -notin $protected })
+$obsolete = [System.Collections.Generic.List[object]]::new()
+foreach ($pin in @($ordered | Where-Object { $_.ipfs_pin_hash -notin $protected })) { $obsolete.Add($pin) }
+
+if ($RequiredFreeBytes -gt 0) {
+  $usedBytes = [long](($allPins | Measure-Object -Property size -Sum).Sum)
+  $afterRetention = $usedBytes - [long](($obsolete | Measure-Object -Property size -Sum).Sum)
+  foreach ($candidate in @($ordered | Sort-Object { [datetime]$_.date_pinned })) {
+    if (($afterRetention + $RequiredFreeBytes) -le $StorageLimitBytes) { break }
+    if ($candidate.ipfs_pin_hash -eq $latestCid) { continue }
+    if ($candidate.ipfs_pin_hash -notin @($obsolete.ipfs_pin_hash)) {
+      $obsolete.Add($candidate)
+      $afterRetention -= [long]$candidate.size
+    }
+  }
+  if (($afterRetention + $RequiredFreeBytes) -gt $StorageLimitBytes) {
+    throw 'Spazio Pinata insufficiente senza rimuovere backup estranei a Nomad Echo.'
+  }
+}
 
 foreach ($pin in $obsolete) {
   $cid = $pin.ipfs_pin_hash
@@ -45,4 +70,4 @@ foreach ($pin in $obsolete) {
   }
 }
 
-Write-Host "Pulizia Pinata completata: $($ordered.Count) backup trovati, $($obsolete.Count) rimossi, conservazione $Keep."
+Write-Host "Pulizia Pinata completata: $($ordered.Count) backup Nomad Echo trovati, $($obsolete.Count) rimossi, conservazione massima $Keep."
