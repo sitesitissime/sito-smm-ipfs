@@ -30,7 +30,9 @@ do {
   $rows = @($result.rows)
   foreach ($row in $rows) {
     $allPins.Add($row)
-    if ($row.metadata.keyvalues.sync_site -eq 'nomad-echo') { $pins.Add($row) }
+    $isNomadBackup = $row.metadata.keyvalues.sync_site -eq 'nomad-echo'
+    $isLegacyNomadBackup = $row.metadata.name -eq 'Sito SMM - Nomad Echo'
+    if ($isNomadBackup -or $isLegacyNomadBackup) { $pins.Add($row) }
   }
   $offset += $rows.Count
 } while ($rows.Count -eq 1000)
@@ -70,4 +72,4 @@ foreach ($pin in $obsolete) {
   }
 }
 
-Write-Host "Pulizia Pinata completata: $($ordered.Count) backup Nomad Echo trovati, $($obsolete.Count) rimossi, conservazione massima $Keep."
+Write-Host "Pulizia Pinata completata: $($ordered.Count) backup Nomad Echo trovati (inclusi legacy), $($obsolete.Count) rimossi, conservazione massima $Keep."
