@@ -82,28 +82,45 @@ try {
     name = "Nomad Echo encrypted backup $timestamp"
     keyvalues = [ordered]@{ sync_site = 'nomad-echo'; archive_sha = $sha; encrypted = 'aes-256' }
   } | ConvertTo-Json -Compress -Depth 4
-  $client = [Net.Http.HttpClient]::new()
-  $client.Timeout = [TimeSpan]::FromMinutes(30)
-  $client.DefaultRequestHeaders.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $jwt)
-  $multipart = [Net.Http.MultipartFormDataContent]::new()
-  $stream = [IO.File]::OpenRead($archive)
-  $fileContent = [Net.Http.StreamContent]::new($stream)
-  $fileContent.Headers.ContentType = [Net.Http.Headers.MediaTypeHeaderValue]::new('application/x-7z-compressed')
-  $multipart.Add($fileContent, 'file', [IO.Path]::GetFileName($archive))
-  $multipart.Add([Net.Http.StringContent]::new($metadata), 'pinataMetadata')
-  $response = $client.PostAsync('https://api.pinata.cloud/pinning/pinFileToIPFS', $multipart).GetAwaiter().GetResult()
-  $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-  if (-not $response.IsSuccessStatusCode) { throw "Upload Pinata fallito: HTTP $([int]$response.StatusCode)" }
-  $result = $body | ConvertFrom-Json
-  if (-not $result.IpfsHash) { throw 'CID Pinata assente.' }
+  $result = $null
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $client = $null
+    $multipart = $null
+    $stream = $null
+    $fileContent = $null
+    $response = $null
+    try {
+      $client = [Net.Http.HttpClient]::new()
+      $client.Timeout = [TimeSpan]::FromMinutes(30)
+      $client.DefaultRequestHeaders.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $jwt)
+      $multipart = [Net.Http.MultipartFormDataContent]::new()
+      $stream = [IO.File]::OpenRead($archive)
+      $fileContent = [Net.Http.StreamContent]::new($stream)
+      $fileContent.Headers.ContentType = [Net.Http.Headers.MediaTypeHeaderValue]::new('application/x-7z-compressed')
+      $multipart.Add($fileContent, 'file', [IO.Path]::GetFileName($archive))
+      $multipart.Add([Net.Http.StringContent]::new($metadata), 'pinataMetadata')
+      $response = $client.PostAsync('https://api.pinata.cloud/pinning/pinFileToIPFS', $multipart).GetAwaiter().GetResult()
+      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      if (-not $response.IsSuccessStatusCode) { throw "Upload Pinata fallito: HTTP $([int]$response.StatusCode)" }
+      $result = $body | ConvertFrom-Json
+      if (-not $result.IpfsHash) { throw 'CID Pinata assente.' }
+      break
+    } catch {
+      if ($attempt -ge 3) { throw }
+      Write-Warning "Tentativo Pinata $attempt fallito; nuovo tentativo automatico."
+      Start-Sleep -Seconds (10 * $attempt)
+    } finally {
+      if ($response) { $response.Dispose() }
+      if ($fileContent) { $fileContent.Dispose() }
+      if ($stream) { $stream.Dispose() }
+      if ($multipart) { $multipart.Dispose() }
+      if ($client) { $client.Dispose() }
+    }
+  }
   $record = [ordered]@{ publishedAt = (Get-Date).ToUniversalTime().ToString('o'); commit = (git rev-parse HEAD).Trim(); archive = [IO.Path]::GetFileName($archive); sha256 = $sha; size = (Get-Item -LiteralPath $archive).Length; cid = $result.IpfsHash }
   New-Item -ItemType Directory -Force -Path (Join-Path $projectRoot 'deploy-reports') | Out-Null
   [IO.File]::WriteAllText($reportPath, ($record | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
   Write-Host "Pinata completato. CID: $($result.IpfsHash)"
 } finally {
-  if ($fileContent) { $fileContent.Dispose() }
-  if ($stream) { $stream.Dispose() }
-  if ($multipart) { $multipart.Dispose() }
-  if ($client) { $client.Dispose() }
   if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 }
