@@ -1,0 +1,92 @@
+.portfolio-showcase-frame[data-work-rotation="true"] > img {
+  visibility: hidden;
+}
+
+.work-social-rotation,
+.work-social-rotation img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.work-social-rotation {
+  z-index: 3;
+  overflow: hidden;
+}
+
+.work-social-rotation img {
+  display: block;
+  object-fit: cover;
+}
+
+.work-social-next {
+  z-index: 2;
+  visibility: hidden;
+}
+
+.work-social-next.is-entering {
+  visibility: visible;
+  animation: work-social-clean-wipe 650ms cubic-bezier(.2, .78, .2, 1) both;
+}
+
+@keyframes work-social-clean-wipe {
+  from {
+    clip-path: inset(0 100% 0 0 round clamp(18px, 3vw, 32px));
+    filter: brightness(.92);
+  }
+  to {
+    clip-path: inset(0 round clamp(18px, 3vw, 32px));
+    filter: brightness(1);
+  }
+}
+
+.portfolio-slices {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.portfolio-slices span {
+  position: absolute;
+  inset: 0;
+  background: center / cover no-repeat url("portfolio-v2/desktop/desktop-01.png");
+  transform-origin: 61% 53%;
+  mask-image: radial-gradient(ellipse 25vw 43vh at 61% 53%, #000 97%, transparent 100%);
+  animation: portfolio-slice-spin 1.8s cubic-bezier(.45, .02, .2, 1) both;
+  will-change: transform;
+}
+
+.portfolio-slices span:nth-child(1) { clip-path: polygon(61% 53%, 61% 0, 100% 0, 100% 20%); }
+.portfolio-slices span:nth-child(2) { clip-path: polygon(61% 53%, 100% 20%, 100% 65%); animation-delay: 60ms; }
+.portfolio-slices span:nth-child(3) { clip-path: polygon(61% 53%, 100% 65%, 100% 100%, 65% 100%); animation-delay: 120ms; }
+.portfolio-slices span:nth-child(4) { clip-path: polygon(61% 53%, 65% 100%, 0 100%, 0 55%); animation-delay: 180ms; }
+.portfolio-slices span:nth-child(5) { clip-path: polygon(61% 53%, 0 55%, 0 0, 61% 0); animation-delay: 240ms; }
+
+@keyframes portfolio-slice-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 700px) {
+  .portfolio-slices span {
+    background-image: url("portfolio-v2/mobile/mobile-01.png");
+    transform-origin: 52% 54%;
+    mask-image: radial-gradient(ellipse 46vw 30vh at 52% 54%, #000 97%, transparent 100%);
+  }
+
+  .portfolio-slices span:nth-child(1) { clip-path: polygon(52% 54%, 52% 0, 100% 0, 100% 20%); }
+  .portfolio-slices span:nth-child(2) { clip-path: polygon(52% 54%, 100% 20%, 100% 65%); }
+  .portfolio-slices span:nth-child(3) { clip-path: polygon(52% 54%, 100% 65%, 100% 100%, 55% 100%); }
+  .portfolio-slices span:nth-child(4) { clip-path: polygon(52% 54%, 55% 100%, 0 100%, 0 55%); }
+  .portfolio-slices span:nth-child(5) { clip-path: polygon(52% 54%, 0 55%, 0 0, 52% 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-social-next.is-entering,
+  .portfolio-slices span {
+    animation-duration: 1ms;
+  }
+}
