@@ -5,6 +5,7 @@ param(
   [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Net.Http
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $projectRoot
 $secretDir = Join-Path $projectRoot '.local\secrets'
