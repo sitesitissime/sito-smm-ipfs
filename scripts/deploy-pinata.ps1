@@ -57,8 +57,12 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Creazione commit snapshot fallita.' }
     git -C $snapshotRepo bundle create (Join-Path $stage 'project.bundle') --all
     if ($LASTEXITCODE -ne 0) { throw 'Creazione Git bundle fallita.' }
+    $previousErrorPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     git bundle verify (Join-Path $stage 'project.bundle') *> $null
-    if ($LASTEXITCODE -ne 0) { throw 'Verifica Git bundle fallita.' }
+    $bundleVerifyExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorPreference
+    if ($bundleVerifyExitCode -ne 0) { throw 'Verifica Git bundle fallita.' }
     Remove-Item -LiteralPath $snapshotRepo -Recurse -Force
     [IO.File]::WriteAllText((Join-Path $stage 'RECOVERY.txt'), "Nomad Echo`r`nRipristino: git clone project.bundle nomad-echo`r`nEstrazione: 7z x archivio.7z`r`nCronologia completa disponibile su GitHub e GitLab.`r`n", [Text.UTF8Encoding]::new($false))
 

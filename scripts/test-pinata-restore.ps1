@@ -37,8 +37,12 @@ try {
   & $sevenZip x -y "-p$password" "-o$extractPath" $archive | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Decrittazione archivio fallita.' }
   $bundle = Join-Path $extractPath 'project.bundle'
+  $previousErrorPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
   git bundle verify $bundle *> $null
-  if ($LASTEXITCODE -ne 0) { throw 'Verifica Git bundle fallita.' }
+  $bundleVerifyExitCode = $LASTEXITCODE
+  $ErrorActionPreference = $previousErrorPreference
+  if ($bundleVerifyExitCode -ne 0) { throw 'Verifica Git bundle fallita.' }
 
   $restoredRepo = Join-Path $testRoot 'restored'
   git clone --quiet $bundle $restoredRepo
