@@ -1,13 +1,15 @@
 [CmdletBinding()]
 param(
   [switch]$ArchiveOnly,
-  [string]$ArchivePath
+  [string]$ArchivePath,
+  [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $projectRoot
 $secretDir = Join-Path $projectRoot '.local\secrets'
 $backupDir = Join-Path $projectRoot 'backups\encrypted'
+$reportPath = Join-Path $projectRoot 'deploy-reports\pinata-latest.json'
 $stage = Join-Path $projectRoot ('.local\backup-stage-' + [guid]::NewGuid().ToString('N'))
 $sevenZip = @('C:\Program Files\7-Zip\7z.exe', 'C:\Program Files (x86)\7-Zip\7z.exe') | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $sevenZip) { throw '7-Zip non trovato.' }
@@ -23,6 +25,14 @@ function Get-DpapiSecret([string]$name) {
 
 $jwt = if ($ArchiveOnly) { $null } else { Get-DpapiSecret 'pinata-jwt' }
 $password = Get-DpapiSecret 'backup-password'
+$currentCommit = (git rev-parse HEAD).Trim()
+if (-not $ArchiveOnly -and -not $ArchivePath -and -not $Force -and (Test-Path -LiteralPath $reportPath)) {
+  $previous = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
+  if ($previous.commit -eq $currentCommit -and $previous.cid) {
+    Write-Host "Backup Pinata già aggiornato per $currentCommit."
+    return
+  }
+}
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $archive = if ($ArchivePath) {
   (Resolve-Path -LiteralPath $ArchivePath).Path
@@ -81,7 +91,7 @@ try {
   if (-not $result.IpfsHash) { throw 'CID Pinata assente.' }
   $record = [ordered]@{ publishedAt = (Get-Date).ToUniversalTime().ToString('o'); commit = (git rev-parse HEAD).Trim(); archive = [IO.Path]::GetFileName($archive); sha256 = $sha; size = (Get-Item -LiteralPath $archive).Length; cid = $result.IpfsHash }
   New-Item -ItemType Directory -Force -Path (Join-Path $projectRoot 'deploy-reports') | Out-Null
-  [IO.File]::WriteAllText((Join-Path $projectRoot 'deploy-reports\pinata-latest.json'), ($record | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+  [IO.File]::WriteAllText($reportPath, ($record | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
   Write-Host "Pinata completato. CID: $($result.IpfsHash)"
 } finally {
   if ($fileContent) { $fileContent.Dispose() }
