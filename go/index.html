@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Reindirizzamento · Meridian Blue Orca</title>
+    <script src="./config.js"></script>
+    <script>
+      const destination = window.QR_DESTINATION || "https://meridianblueorca.com/";
+      window.location.replace(destination);
+    </script>
+  </head>
+  <body>
+    <p>Reindirizzamento in corso…</p>
+    <script>
+      const link = document.createElement("a");
+      link.href = window.QR_DESTINATION || "https://meridianblueorca.com/";
+      link.textContent = "Continua al sito";
+      document.body.appendChild(link);
+    </script>
+  </body>
+</html>
