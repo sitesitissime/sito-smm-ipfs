@@ -1,0 +1,24 @@
+#site-editor-host {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+}
+
+body.site-editor-active *:not(#site-editor-host):not(#site-editor-host *) {
+  cursor: move !important;
+}
+
+body.site-editor-active .site-editor-hovered {
+  outline: 2px dashed #0b6cff !important;
+  outline-offset: 3px !important;
+}
+
+body.site-editor-active .site-editor-selected {
+  outline: 3px solid #0b6cff !important;
+  outline-offset: 4px !important;
+}
+
+.site-editor-hidden {
+  display: none !important;
+}
