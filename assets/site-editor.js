@@ -74,7 +74,37 @@
   function editable(element) {
     return element instanceof HTMLElement &&
       !["HTML", "BODY", "SCRIPT", "STYLE", "LINK", "META"].includes(element.tagName) &&
-      element !== host && !host.contains(element) && element.id !== "root";
+      element !== host && !host.contains(element) && element.id !== "root" &&
+      !element.closest(".bubble-lens-document");
+  }
+
+  function pickElement(x, y, fallback) {
+    const semantic = "h1,h2,h3,h4,h5,h6,p,li,a,button";
+    const candidates = [...document.querySelectorAll(
+      `${semantic},span,small,strong,em,img,video,figure,div,section,article`
+    )].filter((element) => {
+      if (!editable(element) || element.classList.contains("site-editor-hidden")) return false;
+      const box = element.getBoundingClientRect();
+      if (!box.width || !box.height || x < box.left || x > box.right || y < box.top || y > box.bottom) return false;
+      const style = getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+
+    const normalized = [...new Set(candidates.map((element) => {
+      const block = element.closest(semantic);
+      return block && editable(block) ? block : element;
+    }))];
+
+    normalized.sort((a, b) => {
+      const aSemantic = a.matches(semantic) ? 0 : a.children.length === 0 ? 1 : 2;
+      const bSemantic = b.matches(semantic) ? 0 : b.children.length === 0 ? 1 : 2;
+      if (aSemantic !== bSemantic) return aSemantic - bSemantic;
+      const aBox = a.getBoundingClientRect();
+      const bBox = b.getBoundingClientRect();
+      return aBox.width * aBox.height - bBox.width * bBox.height;
+    });
+
+    return normalized[0] || (editable(fallback) ? fallback : null);
   }
 
   function findElement(key) {
@@ -191,7 +221,7 @@
       positionRemove();
       return;
     }
-    const candidate = editable(event.target) ? event.target : null;
+    const candidate = pickElement(event.clientX, event.clientY, event.target);
     if (candidate === hovered) return;
     hovered?.classList.remove("site-editor-hovered");
     hovered = candidate;
@@ -199,10 +229,11 @@
   }, true);
 
   document.addEventListener("pointerdown", (event) => {
-    if (!active || event.button !== 0 || !editable(event.target)) return;
+    if (!active || event.button !== 0) return;
+    const element = pickElement(event.clientX, event.clientY, event.target);
+    if (!element) return;
     event.preventDefault();
     event.stopPropagation();
-    const element = event.target;
     select(element);
     const key = elementKey(element);
     const state = readState();
